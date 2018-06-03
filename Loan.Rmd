@@ -1,0 +1,102 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+train = read.csv("C:/Users/Administrator/Desktop/train.csv",na.strings = '')
+test = read.csv("C:/Users/Administrator/Desktop/test.csv", na.strings = '')
+
+colSums(is.na(train))
+
+train = train[-c(13)]
+View(train)
+df_combined = rbind(train,test)
+View(df_combined)
+colSums(is.na(df_combined))/nrow(df_combined)*100
+
+df_combined$Credit_History = as.factor(df_combined$Credit_History)
+View(df_combined)
+install.packages("missForest")
+library(missForest)
+
+imputed_data = missForest(df_combined[-c(1)],ntree = 500, variablewise = T,verbose = T )
+
+df_imputed = imputed_data$ximp
+
+View(df_imputed)
+
+df_imputed$Dependents = as.character(df_imputed$Dependents)
+
+df_imputed[df_imputed$Dependents == '3+',]$Dependents = 4
+
+df_imputed$Dependents = as.integer(df_imputed$Dependents)
+
+df_imputed$TotalIncome = df_imputed$ApplicantIncome + df_imputed$CoapplicantIncome
+
+df_imputed$per_capita_income = ifelse(df_imputed$Married=='Yes',df_imputed$TotalIncome/(df_imputed$Dependents+2),df_imputed$TotalIncome/(df_imputed$Dependents+1)) 
+
+
+df_imputed$income_loan_amount_ratio = df_imputed$TotalIncome/df_imputed$LoanAmount
+
+df_imputed$pci_loan_ratio = df_imputed$per_capita_income/df_imputed$LoanAmount
+
+
+df_imputed$emi = df_imputed$LoanAmount/df_imputed$Loan_Amount_Term
+
+df_imputed$emi_pay_capacity = df_imputed$emi/df_imputed$per_capita_income
+
+View(df_imputed)
+
+
+train_1 = df_imputed[1:614,]
+test_1 = df_imputed[615:981,]
+train2 = read.csv("C:/Users/Administrator/Desktop/train.csv",na.strings = '')
+train_1$Loan_status = train2$Loan_Status
+
+#Parameter tuning!
+library(caret)
+classifier_tuning = train(form = Loan_status~.,data = train_1,method = 'rf' )
+classifier_tuning$bestTune
+
+
+library(randomForest)
+classifier = randomForest(x = train_1[-c(18)],
+                          y = train_1$Loan_status,
+                          ntree = 5000,
+                          mtry = 2)
+y_pred = predict(classifier,newdata = test_1)
+classifier$importance
+
+
+library(gbm)
+classifier_gbm = gbm.fit(x = train_1[-18],
+                    y = train_1$Loan_status,
+                    distribution = 'gaussian',
+                    n.trees = 1000,
+                    interaction.depth = 3,
+                    shrinkage = 0.01,
+                    nTrain = 0.8*nrow(train_1))
+
+
+gbm.perf(classifier_gbm)
+summary(classifier_gbm)
+
+library(tree)
+classifier_tree = tree(data = train_1,
+                       formula = Loan_status~.)
+{{ plot(classifier_tree)
+text(classifier_tree) }}
+
+
+pred1 = predict(classifier_tree, newdata = test_1,type = 'class')
+
+
+result = as.data.frame(cbind(as.character(test$Loan_ID),as.character(pred1)))
+colnames(result) = c('Loan_ID','Loan_Status')
+write.csv(result,file = "C:/Users/Administrator/Desktop/feature-engineering-tree1.csv",row.names = F)
+```
+
+
